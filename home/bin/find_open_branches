@@ -1,0 +1,30 @@
+#!/bin/bash
+## Test bash script to list directories with git branches
+
+## Get a list of directories in the repos' root directory only and ignore hidden directories
+files=($(find $CODE_REPO_PARENT_DIR -type d -maxdepth 1 -not -path '*/\.*' -not -path $CODE_REPO_PARENT_DIR))
+
+## Loop through list of directories to update git repos
+for dir in ${files[*]}
+do
+	pushd $dir > /dev/null 2>&1
+
+	## Read the default branch file if there is one and if not then use master
+	if [[ -f .git/default_branch ]]
+	then
+		default_branch=`cat .git/default_branch`
+	else
+		default_branch="master"
+	fi
+
+	branches=$(git branch)
+
+	echo "$dir has branches"
+	echo "$branches"
+
+	#if [[ ]]
+	#then
+		#echo 
+
+	popd > /dev/null 2>&1
+done

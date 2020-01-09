@@ -1,0 +1,137 @@
+#!/bin/bash
+## Bash script to update git repos
+## NOTE: If you need a repo to have a default branch other than the master branch
+## write the branch name into the .git/default_branch
+
+
+## Colors
+branch_color="\033[94m"
+repo_color="\033[96m"
+error_color="\033[91m"
+success_color="\033[92m"
+default_color="\033[0m"
+
+## Make sure environment variable CODE_REPO_PARENT_DIR is set
+if [[ -z $CODE_REPO_PARENT_DIR ]]
+then
+    echo "Environment variable CODE_REPO_PARENT_DIR not set!"
+    exit 1
+fi
+
+## Get a list of directories in the repos' root directory only and ignore hidden directories
+files=($(find $CODE_REPO_PARENT_DIR -type d -maxdepth 1 -not -path '*/\.*' -not -path $CODE_REPO_PARENT_DIR))
+
+## Loop through list of directories to update git repos
+for dir in ${files[*]}
+do
+	pushd $dir > /dev/null 2>&1
+	[[ $dir =~ /([^/]+)$ ]] && echo -e "Updating ${repo_color}${BASH_REMATCH[1]}${default_color}"
+
+	## Read the default branch file if there is one and if not then use master
+	if [[ -f .git/default_branch ]]
+	then
+		default_branch=`cat .git/default_branch`
+	else
+		default_branch="master"
+	fi
+
+	## Get latest from upstream
+	echo "Getting latest from upstream"
+        fetch_results="$(git fetch upstream 2>&1)"
+	
+	## If there are changes to the default branch lets merge
+        if [[ "$fetch_results" =~ "$default_branch" ]]
+        then
+		## Get the current status of the repo
+		echo "Getting current status of repo"
+		status=$(git status)
+	
+		## Stash changes if there are any
+		if [[ ! $status =~ nothing\ to\ commit ]]
+		then
+			echo "Stashing changes"
+			stash_changes="$(git stash -u 2>&1)"
+			
+			if [[ ! $stash_changes =~ Saved\ working\ directory ]]
+			then
+				echo -e "${error_color}Error stashing changes!${default_color}"
+				echo $stash_changes
+			fi
+		fi
+
+		## If we're not currently on master switch to master branch
+		if [[ ! $status =~ On\ branch\ "$default_branch" ]]
+		then
+			echo -e "Checking out ${branch_color}master${default_color} branch"
+			checkout_master="$(git checkout $default_branch 2>&1)"
+			if [[ ! $checkout_master =~ Switched\ to\ branch\ \'$default_branch\' ]]
+			then
+				echo -e "${error_color}Error checking out $default_branch branch!${default_color}"
+				echo $checkout_master
+			fi
+		fi
+
+		## Merge in changes from upstream
+		echo "Merging upstream changes"
+                merge_changes="$(git merge upstream/$default_branch --ff-only 2>&1)"
+		
+		if [[ $merge_changes =~ aborting ]]
+		then
+			echo -e "${error_color}Error merging changes!${default_color}"
+			echo $merge_changes
+		else
+			## Push changes up
+			echo -e "Pushing updated ${branch_color}$default_branch${default_color} branch"
+			push_changes="$(git push 2>&1)"
+		
+			if [[ ! $push_changes =~ "$default_branch"\ \-\>\ "$default_branch" ]]
+			then
+				echo -e "${error_color}Error pushing changes to origin!${default_color}"
+				echo $push_changes
+			fi
+		fi
+	
+		## Switch back to original branch if not already on master	
+		if [[ ! $status =~ On\ branch\ "$default_branch" ]] && [[ $status =~ On\ branch\ ([^[:space:]]+) ]]
+		then
+			original_branch="${BASH_REMATCH[1]}"
+			echo -e "Switching back to branch ${branch_color}$original_branch${default_color}"
+			checkout_branch=`git checkout "$original_branch" 2>&1`
+			
+			if [[ ! $checkout_branch =~ Switched\ to\ branch\ \'$original_branch\' ]]
+			then
+				echo -e "${error_color}Error switching back to branch ${branch_color}$original_branch${default_color}"
+				echo $checkout_branch
+			fi
+		fi
+
+		## Reapply changes that were stashed
+		if [[ ! $status =~ nothing\ to\ commit ]]
+		then
+			echo "Reapplying original changes"
+			apply_stash="$(git stash pop 2>&1)"
+
+			if [[ ! $apply_stash =~ Dropped\ refs ]]
+			then
+				echo -e "${error_color}Error reapplying the stash!${default_color}"
+				echo $apply_stash
+			fi
+		fi
+
+		## Clean up git repo
+		echo "Cleaning up git repo"
+		git_clean=`git gc 2>&1`
+		##echo $git_clean
+
+		if [[ $merge_changes =~ aborting ]]
+		then
+			echo -e "${error_color}Update failed!${default_color}"
+		else
+			echo -e "${success_color}Update complete${default_color}"
+		fi
+	else
+		echo "No new changes to apply"
+	fi
+
+	popd > /dev/null 2>&1
+done

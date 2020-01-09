@@ -1,0 +1,63 @@
+#!/bin/bash
+
+############################
+# Be sure to exoirt your environment variables for
+# GITHUB_USERNAME - to your github username
+# CODE_REPO_PARENT_DIR - the parent directory where you're storing your code
+# 
+# This script will take the remote repo url and, assuming you've already forked the repo,
+# clone your forked repo and set the upstream to the original repo
+############################
+
+## Make sure environment variable GITHUB_USERNAME is set
+if [[ -z $GITHUB_USERNAME ]]
+then
+    echo "Environment variable GITHUB_USERNAME not set!"
+    exit 1
+fi
+
+## Make sure environment variable CODE_REPO_PARENT_DIR is set
+if [[ -z $CODE_REPO_PARENT_DIR ]]
+then
+    echo "Environment variable CODE_REPO_PARENT_DIR not set!"
+    exit 1
+fi
+
+## Make sure we pass in a repo to fork
+if [[ -z $1 ]]
+then
+    echo "No repo passed in!"
+    exit 1
+fi
+
+
+## The upstream username. Use passed in param or default
+username="${2:-${GITHUB_USERNAME}}"
+
+## The git repo that you forked
+forked_repo=$1
+
+## Get the repo name from repo url
+[[ $forked_repo =~ /(.+)\.git$ ]] && repo_name="${BASH_REMATCH[1]}"
+
+## Set working directory to parent repo directory
+pushd $CODE_REPO_PARENT_DIR > /dev/null 2>&1
+
+## Clone the repo
+echo "Cloning repo $repo_name"
+[[ $forked_repo =~ ^(.+):.*/(.+)$ ]] && git clone "${BASH_REMATCH[1]}:$username/${BASH_REMATCH[2]}" > /dev/null 2>&1
+
+## Setup the upstream remote
+cd $repo_name > /dev/null 2>&1
+[[ $forked_repo =~ ^.+:(.+)/.*$ ]] && echo "Setting upstream to ${BASH_REMATCH[1]}"
+git remote add upstream $forked_repo
+
+## Fetch upstream
+echo "Fetching upstream"
+git fetch upstream > /dev/null 2>&1
+
+## Reset directory
+popd > /dev/null 2>&1
+
+## Done
+echo "Cloning complete"
